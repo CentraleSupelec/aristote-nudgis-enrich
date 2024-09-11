@@ -1,3 +1,4 @@
 mediaserver-api-client
 python-dotenv==1.0.0
 flask
+requests==2.32.3
