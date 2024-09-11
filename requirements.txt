@@ -1,0 +1,3 @@
+mediaserver-api-client
+python-dotenv==1.0.0
+flask

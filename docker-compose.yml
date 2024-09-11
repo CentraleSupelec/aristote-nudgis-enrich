@@ -1,0 +1,11 @@
+services:
+  ubicast:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    # volumes:
+    #   - ./:/server_app/
+    ports:
+     - 8001:8000

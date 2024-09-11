@@ -1,0 +1,11 @@
+{
+    "SERVER_URL": "https://webtv.centralesupelec.fr",
+    "API_KEY": "API_KEY",
+    "CLIENT_ID": "CLIENT_ID",
+    "PROXIES": {
+        "http": "",
+        "https": ""
+    },
+    "UPLOAD_CHUNK_SIZE": 5242880,
+    "VERIFY_SSL": false
+}
