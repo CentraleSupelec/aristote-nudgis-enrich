@@ -53,7 +53,7 @@ build:
     - >
       /kaniko/executor \
         --context ${CI_PROJECT_DIR} \
-        --dockerfile ${CI_PROJECT_DIR}/server/Dockerfile \
+        --dockerfile ${CI_PROJECT_DIR}/Dockerfile \
         --destination ${REGISTRY_HOSTNAME}/${REPOSITORY_PATH}:${CI_COMMIT_REF_NAME} \
         --snapshotMode=redo \
         --use-new-run=true \
