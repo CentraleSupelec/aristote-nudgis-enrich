@@ -1,0 +1,70 @@
+.python_job_template:
+  image: python:3.10
+  interruptible: true
+
+download_deps:
+  extends: .python_job_template
+  stage: download_deps
+  before_script:
+    - mkdir ~/.pip
+    - python -m venv venv
+    - source ./venv/bin/activate
+  script:
+    - pip install --no-cache-dir --upgrade pip
+    - pip install -r requirements-dev.txt
+  artifacts:
+    paths:
+      - "venv"
+    expire_in: 2 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH
+  tags:
+    - docker
+
+.lint_test_template:
+  extends: .python_job_template
+  dependencies:
+    - download_deps
+  before_script:
+    - source ./venv/bin/activate
+  rules:
+    - if: $CI_COMMIT_BRANCH
+
+lint:
+  extends: .lint_test_template
+  stage: lint
+  script:
+    - deptry .
+    - black . --check
+    - ruff check .
+  tags:
+    - docker
+
+build:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.10.0-debug
+    entrypoint: [ "" ]
+  before_script:
+    # Login to registry
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$REGISTRY_HOSTNAME\":{\"username\":\"$REGISTRY_USERNAME\",\"password\":\"$REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+  script:
+    - >
+      /kaniko/executor \
+        --context ${CI_PROJECT_DIR} \
+        --dockerfile ${CI_PROJECT_DIR}/server/Dockerfile \
+        --destination ${REGISTRY_HOSTNAME}/${REPOSITORY_PATH}:${CI_COMMIT_REF_NAME} \
+        --snapshotMode=redo \
+        --use-new-run=true \
+        --cache \
+        --cleanup
+  only:
+    - tags
+  tags:
+    - docker
+
+stages:
+  - download_deps
+  - lint
+  - build
