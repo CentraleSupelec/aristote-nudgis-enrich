@@ -33,16 +33,10 @@ cp -f config.dist.json config.json
 
 Fill in API_KEY and CLIENT_ID
 
-# Start Proxy server
+# Start server (proxy and webhook)
 
 ```
-python3 proxy.py
-```
-
-# Start Webhook server
-
-```
-python3 webhook.py
+python3 ubicast.py
 ```
 
 # Start Ubicast import
