@@ -53,8 +53,17 @@ build:
     - >
       /kaniko/executor \
         --context ${CI_PROJECT_DIR} \
-        --dockerfile ${CI_PROJECT_DIR}/Dockerfile \
-        --destination ${REGISTRY_HOSTNAME}/${REPOSITORY_PATH}:${CI_COMMIT_REF_NAME} \
+        --dockerfile ${CI_PROJECT_DIR}/docker/python/Dockerfile \
+        --destination ${REGISTRY_HOSTNAME}/${REPOSITORY_PATH}/python:${CI_COMMIT_REF_NAME} \
+        --snapshotMode=redo \
+        --use-new-run=true \
+        --cache \
+        --cleanup
+    - >
+      /kaniko/executor \
+        --context ${CI_PROJECT_DIR} \
+        --dockerfile ${CI_PROJECT_DIR}/docker/nginx/Dockerfile \
+        --destination ${REGISTRY_HOSTNAME}/${REPOSITORY_PATH}/nginx:${CI_COMMIT_REF_NAME} \
         --snapshotMode=redo \
         --use-new-run=true \
         --cache \
