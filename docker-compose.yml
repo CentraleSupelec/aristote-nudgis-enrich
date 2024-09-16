@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: ./docker/python/Dockerfile
+    volumes:
+      - "./ubicast.py:/server_app/ubicast.py:cached"
     env_file:
       - .env
 
@@ -18,4 +20,4 @@ services:
     volumes:
       - "./docker/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:cached"
     ports:
-      - ${FRONT_PORT:-5000}:80
+      - ${FRONT_PORT:-5001}:80
