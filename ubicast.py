@@ -1,6 +1,9 @@
 import sqlite3
-from flask import Flask, jsonify, request, redirect, Response
+import requests
+from flask import Flask, jsonify, request, Response, send_file
 from ms_client.client import MediaServerClient, MediaServerRequestError
+from io import BytesIO
+from urllib.parse import urlparse
 
 import os
 from dotenv import load_dotenv
@@ -139,8 +142,19 @@ def export_data(oid):
         url_resource = get_media_best_resource_url(msc, oid)
     except MediaServerRequestError as error:
         return Response("OID not found", status=error.status_code)
-    print(url_resource)
-    return redirect(url_resource)
+
+    video_response = requests.get(url_resource)
+
+    if video_response.status_code != 200:
+        return Response("Failed to download video", status=500)
+
+    parsed_url = urlparse(url_resource)
+    filename = os.path.basename(parsed_url.path)
+
+    video_data = BytesIO(video_response.content)
+    return send_file(
+        video_data, as_attachment=True, download_name=filename, mimetype="video/mp4"
+    )
 
 
 if __name__ == "__main__":
