@@ -13,8 +13,7 @@ ARISTOTE_API_CLIENT_ID = os.environ["ARISTOTE_API_CLIENT_ID"]
 ARISTOTE_API_CLIENT_SECRET = os.environ["ARISTOTE_API_CLIENT_SECRET"]
 ARISTOTE_END_USER_IDENTIFIER = os.environ["ARISTOTE_END_USER_IDENTIFIER"]
 
-PORXY_BASE_URL = os.environ["PORXY_BASE_URL"]
-WEBHOOK_BASE_URL = os.environ["WEBHOOK_BASE_URL"]
+BASE_URL = os.environ["BASE_URL"]
 
 token = None
 
@@ -70,8 +69,8 @@ def request_enrichment(video_oid, langauge: str) -> str:
             enrichment_parameters["translateTo"] = "fr"
 
     payload = {
-        "url": f"{PORXY_BASE_URL}/export/{video_oid}",
-        "notificationWebhookUrl": f"{WEBHOOK_BASE_URL}/webhook",
+        "url": f"{BASE_URL}/export/{video_oid}",
+        "notificationWebhookUrl": f"{BASE_URL}/webhook",
         "enrichmentParameters": enrichment_parameters,
         "endUserIdentifier": ARISTOTE_END_USER_IDENTIFIER,
     }
