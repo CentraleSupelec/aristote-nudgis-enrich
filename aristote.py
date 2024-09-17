@@ -56,16 +56,16 @@ def aristote_api(
         return requests.post(url=prefixed_uri, json=json, headers=headers)
 
 
-def request_enrichment(video_oid, langauge: str) -> str:
+def request_enrichment(video_oid, language: str) -> str:
     enrichment_parameters = {
         "translateTo": "en",
         "generateMetadata": False,
         "generateQuiz": False,
     }
 
-    if langauge:
-        enrichment_parameters["langauge"] = langauge
-        if langauge == "en":
+    if language:
+        enrichment_parameters["language"] = language
+        if language == "en":
             enrichment_parameters["translateTo"] = "fr"
 
     payload = {
