@@ -123,7 +123,7 @@ def worklow(msc: MediaServerClient, channel_oid: str):
                 if channel_language != "" and channel_language != "fr/en"
                 else None
             )
-            enrichment_id = request_enrichment(video["oid"], langauge=channel_language)
+            enrichment_id = request_enrichment(video["oid"], language=channel_language)
             add_line(video["oid"], enrichment_id, channel_language)
 
     print_table()
