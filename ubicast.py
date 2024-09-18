@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 import os
 from dotenv import load_dotenv
-from aristote import get_enrichment_version, get_transcript
+from aristote import get_enrichment_version, get_transcript, request_new_enrichment
 
 load_dotenv(".env")
 
@@ -40,6 +40,19 @@ def update_status_by_oid(conn: sqlite3.Connection, oid: str, status: str):
         WHERE oid = ?
     """,
         (status, oid),
+    )
+    conn.commit()
+
+
+def update_language_by_oid(conn: sqlite3.Connection, oid: str, language: str):
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE enrichment_requests
+        SET language = ?
+        WHERE oid = ?
+    """,
+        (language, oid),
     )
     conn.commit()
 
@@ -86,17 +99,25 @@ def webhook():
     enrichment_id = data["id"]
     conn = sqlite3.connect(DATABASE_URL)
     oid = get_oid_by_enrichment_id(conn=conn, enrichment_id=enrichment_id)
+    print(f"OID : {oid}")
 
     if data["status"] == "SUCCESS":
-        initial_version_id = data["initialVersionId"]
-        print(f"OID : {oid}")
         if oid:
-            update_status_by_oid(conn=conn, oid=oid, status="SUCCESS")
+            enrichment_version_id = data["initialVersionId"]
             enrichment_version = get_enrichment_version(
-                enrichment_id, initial_version_id
+                enrichment_id, enrichment_version_id
             )
             language = enrichment_version["transcript"]["language"]
-            transcript = get_transcript(enrichment_id, initial_version_id, language)
+            print(enrichment_version["translateTo"])
+            if enrichment_version["translateTo"]:
+                update_status_by_oid(conn=conn, oid=oid, status="SUCCESS")
+            else:
+                update_status_by_oid(conn=conn, oid=oid, status="TRANSCRIBED")
+                update_language_by_oid(conn=conn, oid=oid, language=language)
+                request_new_enrichment(enrichment_id, language)
+                return ""
+
+            transcript = get_transcript(enrichment_id, enrichment_version_id, language)
             msc = MediaServerClient(CONFIG_FILE)
             msc.check_server()
             print(f"// Sending subtitles in {language}")
@@ -111,7 +132,7 @@ def webhook():
             translate_to = enrichment_version["translateTo"]
             if translate_to:
                 translated_transcript = get_transcript(
-                    enrichment_id, initial_version_id, translate_to
+                    enrichment_id, enrichment_version_id, translate_to
                 )
                 print(f"// Sending translated subtitles in {translate_to}")
                 translated_subtitles_add_response = msc.api(
