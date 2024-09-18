@@ -58,7 +58,6 @@ def aristote_api(
 
 def request_enrichment(video_oid, language: str) -> str:
     enrichment_parameters = {
-        "translateTo": "en",
         "generateMetadata": False,
         "generateQuiz": False,
     }
@@ -67,6 +66,8 @@ def request_enrichment(video_oid, language: str) -> str:
         enrichment_parameters["language"] = language
         if language == "en":
             enrichment_parameters["translateTo"] = "fr"
+        else:
+            enrichment_parameters["translateTo"] = "en"
 
     payload = {
         "url": f"{BASE_URL}/export/{video_oid}",
@@ -82,6 +83,34 @@ def request_enrichment(video_oid, language: str) -> str:
     if enrichment_response.status_code == 200:
         enrichment_id = enrichment_response.json()["id"]
         return enrichment_id
+
+
+def request_new_enrichment(enrichment_id: str, language: str) -> str:
+    enrichment_parameters = {
+        "generateMetadata": False,
+        "generateQuiz": False,
+    }
+
+    if language:
+        enrichment_parameters["language"] = language
+        if language == "en":
+            enrichment_parameters["translateTo"] = "fr"
+        else:
+            enrichment_parameters["translateTo"] = "en"
+
+    payload = {
+        "notificationWebhookUrl": f"{BASE_URL}/webhook",
+        "enrichmentParameters": enrichment_parameters,
+        "endUserIdentifier": ARISTOTE_END_USER_IDENTIFIER,
+    }
+
+    enrichment_response = aristote_api(
+        uri=f"enrichments/{enrichment_id}/new_ai_version", method="POST", json=payload
+    )
+
+    if enrichment_response.status_code == 200:
+        status = enrichment_response.json()["status"]
+        return status
 
 
 def get_enrichment_version(enrichment_id, version_id):
