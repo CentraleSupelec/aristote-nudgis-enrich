@@ -1,3 +1,4 @@
+from pprint import pprint
 import sqlite3
 import requests
 from flask import Flask, jsonify, request, Response, send_file
@@ -13,6 +14,7 @@ load_dotenv(".env")
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 CONFIG_FILE = os.environ["CONFIG_FILE"]
+ARISTOTE_MARKER = "aristote_generated"
 
 app = Flask(__name__)
 
@@ -120,12 +122,41 @@ def webhook():
             transcript = get_transcript(enrichment_id, enrichment_version_id, language)
             msc = MediaServerClient(CONFIG_FILE)
             msc.check_server()
+
+            subtitles_get_response = msc.api(
+                "/subtitles", method="get", params={"oid": oid}
+            )
+            pprint(subtitles_get_response)
+
+            subs = subtitles_get_response["subtitles"]
+
+            for sub in subs:
+                if str(sub["title"]).startswith(ARISTOTE_MARKER):
+                    sub_id = sub["id"]
+                    subtitles_delete_response = msc.api(
+                        "/subtitles/delete",
+                        method="post",
+                        data={"id": sub_id},
+                    )
+                    print(subtitles_delete_response["message"])
+
             print(f"// Sending subtitles in {language}")
             subtitles_add_response = msc.api(
                 "/subtitles/add",
                 method="post",
-                data={"oid": oid, "lang": language, "validated": "yes"},
-                files={"file": (f"{oid}_{language}.srt", transcript, "text/plain")},
+                data={
+                    "oid": oid,
+                    "lang": language,
+                    "validated": "yes",
+                    "title": f"{ARISTOTE_MARKER}_{language}",
+                },
+                files={
+                    "file": (
+                        f"{ARISTOTE_MARKER}_{oid}_{language}.srt",
+                        transcript,
+                        "text/plain",
+                    )
+                },
             )
             print(subtitles_add_response["message"])
 
@@ -138,17 +169,21 @@ def webhook():
                 translated_subtitles_add_response = msc.api(
                     "/subtitles/add",
                     method="post",
-                    data={"oid": oid, "lang": translate_to, "validated": "yes"},
+                    data={
+                        "oid": oid,
+                        "lang": translate_to,
+                        "validated": "yes",
+                        "title": f"{ARISTOTE_MARKER}_{translate_to}",
+                    },
                     files={
                         "file": (
-                            f"{oid}_{translate_to}.srt",
+                            f"{ARISTOTE_MARKER}_{oid}_{translate_to}.srt",
                             translated_transcript,
                             "text/plain",
                         )
                     },
                 )
                 print(translated_subtitles_add_response["message"])
-
         return ""
     elif data["status"] == "FAILURE":
         update_status_by_oid(conn=conn, oid=oid, status="FAILURE")
@@ -171,10 +206,11 @@ def export_data(oid):
 
     parsed_url = urlparse(url_resource)
     filename = os.path.basename(parsed_url.path)
+    mime_type = video_response.headers.get("Content-Type")
 
     video_data = BytesIO(video_response.content)
     return send_file(
-        video_data, as_attachment=True, download_name=filename, mimetype="video/mp4"
+        video_data, as_attachment=True, download_name=filename, mimetype=mime_type
     )
 
 

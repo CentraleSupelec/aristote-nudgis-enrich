@@ -5,3 +5,4 @@ __pycache__
 *.db
 *.srt
 *.csv
+test_*.py
