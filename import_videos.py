@@ -13,9 +13,9 @@ import csv
 from datetime import datetime
 import os
 import sqlite3
-import sys
 from dotenv import load_dotenv
 from ms_client.client import MediaServerClient
+import argparse
 
 from aristote import request_enrichment
 
@@ -90,6 +90,22 @@ def add_line(oid: str, enrichment_id: str, language: str):
     )
 
     conn.commit()
+    print(f"Enrichment request with oid: {oid} has been added.")
+
+
+def delete_line(oid: str):
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM enrichment_requests WHERE oid = ?
+        """,
+        (oid,),
+    )
+
+    conn.commit()
+
+    print(f"Enrichment request with oid: {oid} has been deleted.")
 
 
 def oid_exists(oid):
@@ -111,12 +127,12 @@ def get_channel_language(channel_oid: str) -> str:
                 return row["language"]
 
 
-def worklow(msc: MediaServerClient, channel_oid: str):
+def worklow(msc: MediaServerClient, channel_oid: str, update: bool = False):
     info = get_channel_videos(msc, channel_oid)
 
     for video in info["video_oids"]:
-        if not oid_exists(video["oid"]):
-            print("Adding new line")
+        oid_already_exists = oid_exists(video["oid"])
+        if update or not oid_already_exists:
             channel_language = get_channel_language(video["parent_oid"])
             channel_language = (
                 channel_language
@@ -124,16 +140,50 @@ def worklow(msc: MediaServerClient, channel_oid: str):
                 else None
             )
             enrichment_id = request_enrichment(video["oid"], language=channel_language)
+
+            if update and oid_already_exists:
+                delete_line(video["oid"])
+
             add_line(video["oid"], enrichment_id, channel_language)
 
     print_table()
 
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--channel", type=str, help="Specify the channel OID")
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Indicate if you want to update already treated videos",
+    )
+    parser.add_argument(
+        "--csv", type=str, help="Specify a CSV file if multiple channels to treat"
+    )
+
+    args = parser.parse_args()
+
+    channel_oid = args.channel
+    update = args.update
+    csv_file = args.csv
+
+    print(f"Channel: {channel_oid}")
+    print(f"Update: {update}")
+    print(f"CSV File: {csv_file}")
+
     msc = MediaServerClient(CONFIG_FILE)
     msc.check_server()
-    channel_oid = sys.argv[1] if len(sys.argv) > 1 else ""
+
     conn = sqlite3.connect(DATABASE_URL)
     initiate_database()
-    worklow(msc, channel_oid)
+
+    if channel_oid:
+        worklow(msc, channel_oid, update)
+    elif csv_file:
+        with open(csv_file, mode="r", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                worklow(msc, row["channel_oid"], update)
+
     conn.close()
