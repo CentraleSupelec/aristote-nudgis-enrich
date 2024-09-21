@@ -7,9 +7,11 @@ WORKDIR /server_app/
 
 RUN ln -snf /usr/share/zoneinfo/Europe/Paris /etc/localtime && echo Europe/Paris > /etc/timezone
 
+RUN pip install gunicorn
+
 COPY ./requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ./ /server_app/
 
-CMD ["flask", "--app=ubicast", "run", "--host=0.0.0.0", "--port=8000", "--debug"]
+CMD ["gunicorn", "--workers=4", "--bind=0.0.0.0:8000", "ubicast:app"]
