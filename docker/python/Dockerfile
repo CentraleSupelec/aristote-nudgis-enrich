@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ./ /server_app/
 
-CMD ["gunicorn", "--workers=4", "--bind=0.0.0.0:8000", "ubicast:app"]
+CMD ["gunicorn", "--workers=6", "--bind=0.0.0.0:8000", "--timeout=300", "ubicast:app"]
