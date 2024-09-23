@@ -10,14 +10,14 @@ mkdir examples
 mv "this file" mediaserver-client/examples
 """
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import sqlite3
 from dotenv import load_dotenv
 from ms_client.client import MediaServerClient
 import argparse
 
-from aristote import request_enrichment
+from aristote import request_enrichment, get_enrichment
 
 load_dotenv(".env")
 
@@ -75,6 +75,28 @@ def initiate_database():
     conn.commit()
 
 
+def get_status_by_oid(oid: str) -> str | None:
+    cursor = conn.cursor()
+    cursor.execute("SELECT status FROM enrichment_requests WHERE oid = ?", (oid,))
+    row = cursor.fetchone()
+
+    if row:
+        return row[0]
+    return None
+
+
+def get_enrichment_id_by_oid(oid: str) -> str | None:
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT enrichment_id FROM enrichment_requests WHERE oid = ?", (oid,)
+    )
+    row = cursor.fetchone()
+
+    if row:
+        return row[0]
+    return None
+
+
 def add_line(oid: str, enrichment_id: str, language: str):
     cursor = conn.cursor()
 
@@ -127,50 +149,95 @@ def get_channel_language(channel_oid: str) -> str:
                 return row["language"]
 
 
-def worklow(msc: MediaServerClient, channel_oid: str, update: bool = False):
+def worklow(
+    msc: MediaServerClient, channel_oid: str, update: str = None, limit: int = None
+):
     info = get_channel_videos(msc, channel_oid)
+    stuck_videos = []
+    enrichment_requests_count = 0
 
     for video in info["video_oids"]:
-        oid_already_exists = oid_exists(video["oid"])
-        if update or not oid_already_exists:
+        if limit and enrichment_requests_count >= limit:
+            break
+
+        oid = video["oid"]
+        oid_already_exists = oid_exists(oid)
+
+        stuck = False
+
+        if update == "stuck" and oid_already_exists:
+            known_status = get_status_by_oid(oid)
+            if known_status == "PENDING":
+                enrichment_id = get_enrichment_id_by_oid(oid)
+                enrichment = get_enrichment(enrichment_id)
+                status = enrichment["status"]
+                upload_started_at = enrichment["uploadStartedAt"]
+                ancient_upload = True
+                if upload_started_at:
+                    upload_started_at = datetime.fromisoformat(
+                        enrichment["uploadStartedAt"]
+                    )
+                    now = datetime.now(upload_started_at.tzinfo)
+                    now_minus_delta = now - timedelta(hours=2)
+                    ancient_upload = upload_started_at < now_minus_delta
+
+                if status == "FAILURE" or (
+                    status == "UPLOADING_MEDIA" and ancient_upload
+                ):
+                    stuck = True
+                    stuck_videos.append(
+                        {"oid": oid, "enrichmentId": enrichment_id, "status": status}
+                    )
+                    print(f"OID : {oid} | Enrichment : {enrichment_id} is stuck")
+
+        force_update = update == "all" or (update == "stuck" and stuck)
+
+        if not oid_already_exists or force_update:
             channel_language = get_channel_language(video["parent_oid"])
             channel_language = (
                 channel_language
                 if channel_language != "" and channel_language != "fr/en"
                 else None
             )
-            enrichment_id = request_enrichment(video["oid"], language=channel_language)
+            if not oid_already_exists or force_update:
+                enrichment_id = request_enrichment(oid, language=channel_language)
+                enrichment_requests_count += 1
 
-            if update and oid_already_exists:
-                delete_line(video["oid"])
+            if oid_already_exists and force_update:
+                delete_line(oid)
 
-            add_line(video["oid"], enrichment_id, channel_language)
+            add_line(oid, enrichment_id, channel_language)
 
-    print_table()
+    if update == "stuck":
+        print(f"Number of stuck videos : {len(stuck_videos)}")
+        print(stuck_videos)
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--channel", type=str, help="Specify the channel OID")
     parser.add_argument(
         "--update",
-        action="store_true",
-        help="Indicate if you want to update already treated videos",
+        type=str,
+        help="Specify if to force update all videos or only those stuck 'all' or 'stuck'",
     )
     parser.add_argument(
         "--csv", type=str, help="Specify a CSV file if multiple channels to treat"
     )
-
+    parser.add_argument(
+        "--limit", type=str, help="Specify a limit for enrichment requests"
+    )
     args = parser.parse_args()
 
     channel_oid = args.channel
     update = args.update
     csv_file = args.csv
+    limit = int(args.limit) if args.limit else None
 
     print(f"Channel: {channel_oid}")
     print(f"Update: {update}")
     print(f"CSV File: {csv_file}")
+    print(f"Limit : {limit}")
 
     msc = MediaServerClient(CONFIG_FILE)
     msc.check_server()
@@ -179,11 +246,12 @@ if __name__ == "__main__":
     initiate_database()
 
     if channel_oid:
-        worklow(msc, channel_oid, update)
+        worklow(msc, channel_oid, update, limit)
     elif csv_file:
         with open(csv_file, mode="r", newline="") as file:
             reader = csv.DictReader(file)
             for row in reader:
-                worklow(msc, row["channel_oid"], update)
+                worklow(msc, row["channel_oid"], update, limit)
 
+    print_table()
     conn.close()

@@ -122,6 +122,13 @@ def get_enrichment_version(enrichment_id, version_id):
         return enrichment_version_response.json()
 
 
+def get_enrichment(enrichment_id):
+    enrichment_response = aristote_api(uri=f"enrichments/{enrichment_id}", method="GET")
+
+    if enrichment_response.status_code == 200:
+        return enrichment_response.json()
+
+
 def get_transcript(enrichment_id, version_id, language: str = None):
     query_params = ""
     if language:
