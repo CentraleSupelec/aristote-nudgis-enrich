@@ -1,9 +1,8 @@
 from pprint import pprint
 import sqlite3
 import requests
-from flask import Flask, jsonify, request, Response, send_file
+from flask import Flask, jsonify, request, Response, stream_with_context
 from ms_client.client import MediaServerClient, MediaServerRequestError
-from io import BytesIO
 from urllib.parse import urlparse
 
 import os
@@ -193,13 +192,17 @@ def webhook():
 @app.route("/export/<string:oid>", methods=["GET"])
 def export_data(oid):
     msc = MediaServerClient(CONFIG_FILE)
-    msc.check_server()
+    try:
+        msc.check_server()
+    except Exception:
+        return Response("Ubicast server timeout", status=504)
+
     try:
         url_resource = get_media_best_resource_url(msc, oid)
     except MediaServerRequestError as error:
         return Response("OID not found", status=error.status_code)
 
-    video_response = requests.get(url_resource)
+    video_response = requests.get(url_resource, stream=True)
 
     if video_response.status_code != 200:
         return Response("Failed to download video", status=500)
@@ -208,9 +211,14 @@ def export_data(oid):
     filename = os.path.basename(parsed_url.path)
     mime_type = video_response.headers.get("Content-Type")
 
-    video_data = BytesIO(video_response.content)
-    return send_file(
-        video_data, as_attachment=True, download_name=filename, mimetype=mime_type
+    def generate():
+        for chunk in video_response.iter_content(chunk_size=20 * 1024 * 1024):
+            yield chunk
+
+    return Response(
+        stream_with_context(generate()),
+        content_type=mime_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
