@@ -1,7 +1,7 @@
 from pprint import pprint
 import sqlite3
 import requests
-from flask import Flask, jsonify, request, Response, stream_with_context
+from flask import Flask, request, Response, stream_with_context
 from ms_client.client import MediaServerClient, MediaServerRequestError
 from urllib.parse import urlparse
 
@@ -60,7 +60,7 @@ def update_language_by_oid(conn: sqlite3.Connection, oid: str, language: str):
 
 def get_media_best_resource_url(msc: MediaServerClient, oid) -> str:
     resources = msc.api("medias/resources-list/", params=dict(oid=oid))["resources"]
-    resources.sort(key=lambda a: -a["file_size"])
+    resources.sort(key=lambda a: a["file_size"])
     if not resources:
         print("Media has no resources.")
         return
@@ -74,7 +74,7 @@ def get_media_best_resource_url(msc: MediaServerClient, oid) -> str:
         print("Resources: %s" % resources)
         raise Exception("Could not download any resource from list: %s." % resources)
 
-    print("Best quality file for video %s: %s" % (oid, best_quality["file"]))
+    print("Smallest file for video %s: %s" % (oid, best_quality["file"]))
 
     if best_quality["format"] not in ("youtube", "embed"):
         # download resource
@@ -86,42 +86,29 @@ def get_media_best_resource_url(msc: MediaServerClient, oid) -> str:
         return url_resource
 
 
-@app.route("/api", methods=["GET"])
-def get_data():
-    return jsonify({"message": "Hello, World!"})
-
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    msc = MediaServerClient(CONFIG_FILE)
-    msc.check_server()
-    data = request.get_json()
-
-    enrichment_id = data["id"]
-    conn = sqlite3.connect(DATABASE_URL)
-    oid = get_oid_by_enrichment_id(conn=conn, enrichment_id=enrichment_id)
-    print(f"OID : {oid}")
-
-    if data["status"] == "SUCCESS":
+def handle_enrichment(
+    conn: sqlite3.Connection,
+    msc: MediaServerClient,
+    oid: str,
+    enrichment_id: str,
+    enrichment_version_id: str,
+    status,
+):
+    if status == "SUCCESS":
         if oid:
-            enrichment_version_id = data["initialVersionId"]
             enrichment_version = get_enrichment_version(
                 enrichment_id, enrichment_version_id
             )
             language = enrichment_version["transcript"]["language"]
-            print(enrichment_version["translateTo"])
+            print(f"Translate to : {enrichment_version['translateTo']}")
             if enrichment_version["translateTo"]:
                 update_status_by_oid(conn=conn, oid=oid, status="SUCCESS")
             else:
                 update_status_by_oid(conn=conn, oid=oid, status="TRANSCRIBED")
                 update_language_by_oid(conn=conn, oid=oid, language=language)
                 request_new_enrichment(enrichment_id, language)
-                return ""
-
+                return
             transcript = get_transcript(enrichment_id, enrichment_version_id, language)
-            msc = MediaServerClient(CONFIG_FILE)
-            msc.check_server()
-
             subtitles_get_response = msc.api(
                 "/subtitles", method="get", params={"oid": oid}
             )
@@ -183,15 +170,32 @@ def webhook():
                     },
                 )
                 print(translated_subtitles_add_response["message"])
-        return ""
-    elif data["status"] == "FAILURE":
+        return
+    elif status == "FAILURE":
         update_status_by_oid(conn=conn, oid=oid, status="FAILURE")
-        return ""
+        return
+
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    msc = MediaServerClient(CONFIG_FILE)
+    msc.conf["TIMEOUT"] = 30
+    msc.check_server()
+    data = request.get_json()
+    enrichment_id = data["id"]
+    status = data["status"]
+    enrichment_version_id = data["initialVersionId"]
+    conn = sqlite3.connect(DATABASE_URL)
+    oid = get_oid_by_enrichment_id(conn=conn, enrichment_id=enrichment_id)
+    print(f"OID : {oid}")
+    handle_enrichment(conn, msc, oid, enrichment_id, enrichment_version_id, status)
+    return ""
 
 
 @app.route("/export/<string:oid>", methods=["GET"])
 def export_data(oid):
     msc = MediaServerClient(CONFIG_FILE)
+    msc.conf["TIMEOUT"] = 30
     try:
         msc.check_server()
     except Exception:
@@ -202,17 +206,17 @@ def export_data(oid):
     except MediaServerRequestError as error:
         return Response("OID not found", status=error.status_code)
 
-    video_response = requests.get(url_resource, stream=True)
+    media_response = requests.get(url_resource, stream=True)
 
-    if video_response.status_code != 200:
+    if media_response.status_code != 200:
         return Response("Failed to download video", status=500)
 
     parsed_url = urlparse(url_resource)
     filename = os.path.basename(parsed_url.path)
-    mime_type = video_response.headers.get("Content-Type")
+    mime_type = media_response.headers.get("Content-Type")
 
     def generate():
-        for chunk in video_response.iter_content(chunk_size=20 * 1024 * 1024):
+        for chunk in media_response.iter_content(chunk_size=1024 * 1024):
             yield chunk
 
     return Response(

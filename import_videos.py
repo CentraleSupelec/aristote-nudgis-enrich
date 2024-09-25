@@ -17,7 +17,8 @@ from dotenv import load_dotenv
 from ms_client.client import MediaServerClient
 import argparse
 
-from aristote import request_enrichment, get_enrichment
+from aristote import request_enrichment, get_enrichment, get_latest_enrichment_version
+from ubicast import handle_enrichment
 
 load_dotenv(".env")
 
@@ -152,9 +153,9 @@ def get_channel_language(channel_oid: str) -> str:
 def worklow(
     msc: MediaServerClient, channel_oid: str, update: str = None, limit: int = None
 ):
+    global enrichment_requests_count
     info = get_channel_videos(msc, channel_oid)
     stuck_videos = []
-    enrichment_requests_count = 0
 
     for video in info["video_oids"]:
         if limit and enrichment_requests_count >= limit:
@@ -167,7 +168,7 @@ def worklow(
 
         if update == "stuck" and oid_already_exists:
             known_status = get_status_by_oid(oid)
-            if known_status == "PENDING":
+            if known_status in ["PENDING", "FAILURE", "TRANSCRIBED"]:
                 enrichment_id = get_enrichment_id_by_oid(oid)
                 enrichment = get_enrichment(enrichment_id)
                 status = enrichment["status"]
@@ -189,6 +190,16 @@ def worklow(
                         {"oid": oid, "enrichmentId": enrichment_id, "status": status}
                     )
                     print(f"OID : {oid} | Enrichment : {enrichment_id} is stuck")
+                elif status in ["SUCCESS"]:
+                    latest_enrichment_version = get_latest_enrichment_version(
+                        enrichment_id
+                    )["id"]
+                    handle_enrichment(
+                        conn, msc, oid, enrichment_id, latest_enrichment_version, status
+                    )
+                    stuck_videos.append(
+                        {"oid": oid, "enrichmentId": enrichment_id, "status": status}
+                    )
 
         force_update = update == "all" or (update == "stuck" and stuck)
 
@@ -245,6 +256,8 @@ if __name__ == "__main__":
     conn = sqlite3.connect(DATABASE_URL)
     initiate_database()
 
+    enrichment_requests_count = 0
+
     if channel_oid:
         worklow(msc, channel_oid, update, limit)
     elif csv_file:
@@ -253,5 +266,4 @@ if __name__ == "__main__":
             for row in reader:
                 worklow(msc, row["channel_oid"], update, limit)
 
-    print_table()
     conn.close()
