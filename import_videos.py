@@ -52,7 +52,6 @@ def get_channel_videos(msc, oid, info=None):
                     slug=item["slug"],
                 )
             )
-            break
     return info
 
 
@@ -207,6 +206,7 @@ def worklow(
                     request_new_enrichment(
                         enrichment_id, latest_enrichment_version["language"]
                     )
+                    enrichment_requests_count += 1
                     logger.debug(
                         f"OID : {oid} | Enrichment : {enrichment_id} Requested quiz generation"
                     )
