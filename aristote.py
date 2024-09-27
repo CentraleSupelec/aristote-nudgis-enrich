@@ -57,10 +57,17 @@ def aristote_api(
 
 
 def request_enrichment(video_oid, language: str) -> str:
+    generate_metadata = False if language is None else True
+    generate_quiz = False if language is None else True
+
     enrichment_parameters = {
-        "generateMetadata": False,
-        "generateQuiz": False,
+        "generateMetadata": generate_metadata,
+        "generateQuiz": generate_quiz,
     }
+
+    if generate_metadata:
+        enrichment_parameters["mediaTypes"] = ["N/A"]
+        enrichment_parameters["disciplines"] = ["N/A"]
 
     if language:
         enrichment_parameters["language"] = language
@@ -85,10 +92,12 @@ def request_enrichment(video_oid, language: str) -> str:
         return enrichment_id
 
 
-def request_new_enrichment(enrichment_id: str, language: str) -> str:
+def request_new_enrichment(enrichment_id: str, language: str = None) -> str:
     enrichment_parameters = {
-        "generateMetadata": False,
-        "generateQuiz": False,
+        "generateMetadata": True,
+        "generateQuiz": True,
+        "mediaTypes": ["N/A"],
+        "disciplines": ["N/A"],
     }
 
     if language:
