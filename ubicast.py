@@ -1,7 +1,10 @@
+import csv
 from datetime import datetime
+import re
 import sqlite3
+import uuid
 import requests
-from flask import Flask, request, Response, stream_with_context
+from flask import Flask, request, Response, stream_with_context, redirect
 from ms_client.client import MediaServerClient, MediaServerRequestError
 from urllib.parse import urlparse
 import logging
@@ -14,6 +17,7 @@ load_dotenv(".env")
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 CONFIG_FILE = os.environ["CONFIG_FILE"]
+ARISTOTE_PORTAL_BASE_URL = os.environ["ARISTOTE_PORTAL_BASE_URL"]
 ARISTOTE_MARKER = "aristote_generated"
 
 app = Flask(__name__)
@@ -31,6 +35,48 @@ def get_oid_by_enrichment_id(
     if row:
         return row[0]
     return None
+
+
+def is_valid_uuid(val: str):
+    try:
+        uuid_obj = uuid.UUID(val, version=4)
+    except ValueError:
+        return False
+    return str(uuid_obj) == val
+
+
+def is_valid_oid(val):
+    pattern = r"^v[0-9a-z]{19}$"
+    return bool(re.match(pattern, val))
+
+
+def get_enrichment_id_by_oid(conn: sqlite3.Connection, oid: str) -> str | None:
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT enrichment_id FROM enrichment_requests WHERE oid = ?", (oid,)
+    )
+    row = cursor.fetchone()
+
+    if row:
+        return row[0]
+    return None
+
+
+def get_successful_requests(conn: sqlite3.Connection):
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT * FROM enrichment_requests
+        WHERE status = 'SUCCESS'
+        """
+    )
+
+    rows = cursor.fetchall()
+    result = [dict(row) for row in rows]
+
+    return result
 
 
 def update_status_by_oid(conn: sqlite3.Connection, oid: str, status: str):
@@ -222,6 +268,9 @@ def webhook():
 
 @app.route("/export/<string:oid>", methods=["GET"])
 def export_data(oid):
+    if not is_valid_oid(oid):
+        return Response(f"{oid} is not a valid OID")
+
     msc = MediaServerClient(CONFIG_FILE)
     msc.conf["TIMEOUT"] = 30
     try:
@@ -256,6 +305,63 @@ def export_data(oid):
         stream_with_context(generate()),
         content_type=mime_type,
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/redirect_to_aristote_portal/<string:oid>", methods=["GET"])
+def redirect_to_aristote_portal(oid):
+    if not is_valid_oid(oid):
+        return Response(f"{oid} is not a valid OID")
+
+    conn = sqlite3.connect(DATABASE_URL)
+    enrichment_id = get_enrichment_id_by_oid(conn=conn, oid=oid)
+    if enrichment_id:
+        return redirect(f"{ARISTOTE_PORTAL_BASE_URL}/enrichments/{enrichment_id}")
+    else:
+        return Response(f"No enrichment ID found for OID : {oid}")
+
+
+@app.route("/generate_csv_for_enriched_videos", methods=["GET"])
+def generate_csv_for_enriched_videos():
+    conn = sqlite3.connect(DATABASE_URL)
+    successful_requests = get_successful_requests(conn=conn)
+
+    filename = f"enriched-videos-{uuid.uuid4()}.csv"
+    tmp_dir = os.path.join(os.getcwd(), "tmp")
+
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir)
+
+    filepath = os.path.join(tmp_dir, filename)
+
+    with open(filepath, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        headers = ["name", "oid", "enrichment_id", "parent_oid", "aristote_portal_lik"]
+        writer.writerow(headers)
+        for successful_request in successful_requests:
+            row = [
+                successful_request["name"],
+                successful_request["oid"],
+                successful_request["enrichment_id"],
+                successful_request["parent_oid"],
+                (
+                    f"{ARISTOTE_PORTAL_BASE_URL}/enrichments/{successful_request['enrichment_id']}"
+                    if ARISTOTE_PORTAL_BASE_URL
+                    else None
+                ),
+            ]
+            writer.writerow(row)
+
+    file_handle = open(filepath, "r")
+
+    def stream_and_remove_file():
+        yield from file_handle
+        file_handle.close()
+        os.remove(filepath)
+
+    return Response(
+        stream_with_context(stream_and_remove_file()),
+        headers={"Content-Disposition": "attachment; filename=enriched-videos.csv"},
     )
 
 
