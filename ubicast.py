@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 import requests
 from flask import Flask, request, Response, stream_with_context, redirect
+from flask_httpauth import HTTPBasicAuth
 from ms_client.client import MediaServerClient, MediaServerRequestError
 from urllib.parse import urlparse
 import logging
@@ -14,10 +15,14 @@ from aristote import get_enrichment_version, get_transcript, request_new_enrichm
 
 logger = logging.getLogger(__name__)
 load_dotenv(".env")
+auth = HTTPBasicAuth()
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 CONFIG_FILE = os.environ["CONFIG_FILE"]
 ARISTOTE_PORTAL_BASE_URL = os.environ["ARISTOTE_PORTAL_BASE_URL"]
+CSV_ENPOINT_USER = os.environ["CSV_ENPOINT_USER"]
+CSV_ENPOINT_PASSWORD = os.environ["CSV_ENPOINT_PASSWORD"]
+
 ARISTOTE_MARKER = "aristote_generated"
 
 app = Flask(__name__)
@@ -321,7 +326,15 @@ def redirect_to_aristote_portal(oid):
         return Response(f"No enrichment ID found for OID : {oid}")
 
 
+@auth.verify_password
+def verify_password(username, password):
+    if username == CSV_ENPOINT_USER and password == CSV_ENPOINT_PASSWORD:
+        return username
+    return None
+
+
 @app.route("/generate_csv_for_enriched_videos", methods=["GET"])
+@auth.login_required
 def generate_csv_for_enriched_videos():
     conn = sqlite3.connect(DATABASE_URL)
     successful_requests = get_successful_requests(conn=conn)
