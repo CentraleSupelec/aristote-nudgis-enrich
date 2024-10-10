@@ -39,10 +39,27 @@ Fill in API_KEY and CLIENT_ID
 python3 ubicast.py
 ```
 
-# Start Ubicast import
+# Start importing videos from a Ubicast channel
 
 ```
-python3 import_videos <channel_oid>
+python3 import_videos --channel <channel_oid> --update <all | stuck | quiz> --debug
 ```
 
-If no channel oid is specified, all videos will be checked againt the database and a request will be sent to AristoteAPI if not already done.
+or you can use a CSV file :
+
+```
+python3 import_videos --csv <path/to/csv> --update <all | stuck | quiz>
+```
+
+An example CSV file is provided : sample.csv
+
+For the update parameter :
+
+
+* all : For all videos of the channel(s) provided, request a new enrichment
+
+* stuck : For all videos of the channel(s) provided that are in a stuck state (PENDING, TRANSCRIBED, FAILURE), check status on Aristote :
+    - if the enrichment is successful : get subtitles and submit them to the Ubicast platform
+    - if the enrichment has failed or uploading the media is taking too long : request a new enrichment
+
+* quiz : For all videos of the channel(s) provided for which an enrichment has already been requested but have no generated quiz, request a new version on the same enrichment but with quiz
