@@ -5,4 +5,6 @@ __pycache__
 *.db
 *.srt
 *.csv
+!sample.csv
 test_*.py
+tmp
