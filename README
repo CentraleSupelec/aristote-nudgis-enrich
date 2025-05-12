@@ -1,5 +1,7 @@
 # UBICAST IMPORT FOR ARISTOTE
 
+This tool allows you to automatically generate subtitles, translations, and quizzes for videos in your specified Nudgis channels, which are configured via a CSV file.
+
 # REQUIREMENTS
 
 python
